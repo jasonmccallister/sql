@@ -4,7 +4,6 @@ import (
 	"context"
 	"dagger/sql/internal/dagger"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -13,25 +12,11 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const (
-	MySQLListColumnsFmt     = "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s'"
-	MySQLColumnDetailFmt    = "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s' AND column_name = '%s'"
-	MySQLListTablesFmt      = "SELECT table_name FROM information_schema.tables WHERE table_schema = '%s'"
-	PostgresColumnDetailFmt = "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s' AND table_catalog = '%s' AND column_name = '%s'"
-	PostgresListColumnsFmt  = "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s' AND table_catalog = '%s'"
-	PostgresListTablesFmt   = "SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' AND table_catalog = '%s'"
-)
-
 // ColumnDetails represents the details of a column in a database table
 type ColumnDetails struct {
 	Name       string
 	DataType   string
 	IsNullable bool
-}
-
-// TableDetails represents the details of a table in a database
-type TableDetails struct {
-	Name string
 }
 
 type Sql struct {
@@ -94,101 +79,79 @@ func (m *Sql) connect() (*sql.DB, string, string, error) {
 	return db, dbType, database, nil
 }
 
-// List the tables in a database in a JSON string
+// List the tables in a database and return the names of the tables
 func (m *Sql) ListTables(
 	// +default="public"
 	schema string,
-) (string, error) {
+) ([]string, error) {
 	db, dbType, database, err := m.connect()
 	if err != nil {
-		return "", fmt.Errorf("error opening database connection: %w", err)
+		return nil, fmt.Errorf("error opening database connection: %w", err)
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf(PostgresListTablesFmt, schema, database)
+	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' AND table_catalog = '%s'", schema, database)
 	if dbType == "mysql" {
-		query = fmt.Sprintf(MySQLListTablesFmt, database)
+		query = fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s'", database)
 	}
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return "", fmt.Errorf("error querying tables: %w", err)
+		return nil, fmt.Errorf("error querying tables: %w", err)
 	}
 	defer rows.Close()
 
-	tables := &TableDetails{}
+	tables := []string{}
 	for rows.Next() {
-		t := TableDetails{}
-
-		if err := rows.Scan(&t.Name); err != nil {
-			return "", fmt.Errorf("error scanning row: %w", err)
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
-
+		tables = append(tables, table)
 	}
-
 	if err := rows.Err(); err != nil {
-		return "", fmt.Errorf("error iterating rows: %w", err)
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	if tables == nil {
-		return "", fmt.Errorf("no tables found, you might be in the wrong database or schema based on the connection")
-	}
-
-	b, err := json.Marshal(tables)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling tables: %w", err)
-	}
-
-	return string(b), nil
+	return tables, nil
 }
 
-// List the columns in a table and return the details for the column as a JSON string
-func (m *Sql) ListColumns(table string) (string, error) {
+// List the columns in a table and and return the names
+func (m *Sql) ListColumns(table string) ([]string, error) {
 	db, dbType, database, err := m.connect()
 	if err != nil {
-		return "", fmt.Errorf("error opening database connection: %w", err)
+		return nil, fmt.Errorf("error opening database connection: %w", err)
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf(PostgresListColumnsFmt, table, database)
+	query := fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s' AND table_catalog = '%s'", table, database)
 	if dbType == "mysql" {
-		query = fmt.Sprintf(MySQLListColumnsFmt, table)
+		query = fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = '%s'", table)
 	}
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return "", fmt.Errorf("error querying columns: %w", err)
+		return nil, fmt.Errorf("error querying columns: %w", err)
 	}
 	defer rows.Close()
 
-	columns := []ColumnDetails{}
+	columns := []string{}
 	for rows.Next() {
-		column := ColumnDetails{}
-		var isNullable string
-		if err := rows.Scan(&column.Name, &column.DataType, &isNullable); err != nil {
-			return "", fmt.Errorf("error scanning row: %w", err)
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
-		column.IsNullable = isNullable == "YES"
-		columns = append(columns, column)
+		columns = append(columns, name)
 	}
 
 	if err := rows.Err(); err != nil {
-		return "", fmt.Errorf("error iterating rows: %w", err)
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
-	if len(columns) == 0 {
-		return "", fmt.Errorf("no columns found, you might be in the wrong database or table based on the connection")
-	}
-
-	b, err := json.Marshal(columns)
-	if err != nil {
-		return "", fmt.Errorf("error marshalling columns: %w", err)
-	}
-
-	return string(b), nil
+	return columns, nil
 }
 
-// List details on a specific column for a table in the database
+// List the details for a specific column in a table
 func (m *Sql) ListColumnDetails(table, column string) (*ColumnDetails, error) {
 	db, dbType, database, err := m.connect()
 	if err != nil {
@@ -196,9 +159,9 @@ func (m *Sql) ListColumnDetails(table, column string) (*ColumnDetails, error) {
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf(PostgresColumnDetailFmt, table, database, column)
+	query := fmt.Sprintf("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s' AND table_catalog = '%s' AND column_name = '%s'", table, database, column)
 	if dbType == "mysql" {
-		query = fmt.Sprintf(MySQLColumnDetailFmt, table, column)
+		query = fmt.Sprintf("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '%s' AND column_name = '%s'", table, column)
 	}
 
 	details := &ColumnDetails{}
