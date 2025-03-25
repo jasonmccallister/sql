@@ -4,6 +4,7 @@ import (
 	"context"
 	"dagger/sql/internal/dagger"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -93,14 +94,14 @@ func (m *Sql) connect() (*sql.DB, string, string, error) {
 	return db, dbType, database, nil
 }
 
-// List the tables in a database in comma-separated format
+// List the tables in a database in a JSON string
 func (m *Sql) ListTables(
 	// +default="public"
 	schema string,
-) (*TableDetails, error) {
+) (string, error) {
 	db, dbType, database, err := m.connect()
 	if err != nil {
-		return nil, fmt.Errorf("error opening database connection: %w", err)
+		return "", fmt.Errorf("error opening database connection: %w", err)
 	}
 	defer db.Close()
 
@@ -111,7 +112,7 @@ func (m *Sql) ListTables(
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("error querying tables: %w", err)
+		return "", fmt.Errorf("error querying tables: %w", err)
 	}
 	defer rows.Close()
 
@@ -120,27 +121,32 @@ func (m *Sql) ListTables(
 		t := TableDetails{}
 
 		if err := rows.Scan(&t.Name); err != nil {
-			return nil, fmt.Errorf("error scanning row: %w", err)
+			return "", fmt.Errorf("error scanning row: %w", err)
 		}
 
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating rows: %w", err)
+		return "", fmt.Errorf("error iterating rows: %w", err)
 	}
 
 	if tables == nil {
-		return nil, fmt.Errorf("no tables found, you might be in the wrong database or schema based on the connection")
+		return "", fmt.Errorf("no tables found, you might be in the wrong database or schema based on the connection")
 	}
 
-	return tables, nil
+	b, err := json.Marshal(tables)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling tables: %w", err)
+	}
+
+	return string(b), nil
 }
 
-// List the columns in a table and return the details for the column
-func (m *Sql) ListColumns(table string) ([]ColumnDetails, error) {
+// List the columns in a table and return the details for the column as a JSON string
+func (m *Sql) ListColumns(table string) (string, error) {
 	db, dbType, database, err := m.connect()
 	if err != nil {
-		return nil, fmt.Errorf("error opening database connection: %w", err)
+		return "", fmt.Errorf("error opening database connection: %w", err)
 	}
 	defer db.Close()
 
@@ -151,7 +157,7 @@ func (m *Sql) ListColumns(table string) ([]ColumnDetails, error) {
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("error querying columns: %w", err)
+		return "", fmt.Errorf("error querying columns: %w", err)
 	}
 	defer rows.Close()
 
@@ -160,21 +166,26 @@ func (m *Sql) ListColumns(table string) ([]ColumnDetails, error) {
 		column := ColumnDetails{}
 		var isNullable string
 		if err := rows.Scan(&column.Name, &column.DataType, &isNullable); err != nil {
-			return nil, fmt.Errorf("error scanning row: %w", err)
+			return "", fmt.Errorf("error scanning row: %w", err)
 		}
 		column.IsNullable = isNullable == "YES"
 		columns = append(columns, column)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating rows: %w", err)
+		return "", fmt.Errorf("error iterating rows: %w", err)
 	}
 
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("no columns found, you might be in the wrong database or table based on the connection")
+		return "", fmt.Errorf("no columns found, you might be in the wrong database or table based on the connection")
 	}
 
-	return columns, nil
+	b, err := json.Marshal(columns)
+	if err != nil {
+		return "", fmt.Errorf("error marshalling columns: %w", err)
+	}
+
+	return string(b), nil
 }
 
 // List details on a specific column for a table in the database
