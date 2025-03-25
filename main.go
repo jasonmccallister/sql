@@ -30,8 +30,7 @@ type ColumnDetails struct {
 
 // TableDetails represents the details of a table in a database
 type TableDetails struct {
-	Name    string
-	Columns []ColumnDetails
+	Name string
 }
 
 type Sql struct {
