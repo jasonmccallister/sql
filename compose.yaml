@@ -1,0 +1,25 @@
+services:
+  mysql: # root:db@tcp(host.docker.internal:3306)/employees?charset=utf8mb4&parseTime=True&loc=Local
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: db
+      MYSQL_DATABASE: employees
+      MYSQL_USER: db
+      MYSQL_PASSWORD: db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+  postgres: # postgres://postgres:postgres@host.docker.internal:5432/postgres?sslmode=disable
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+volumes:
+  mysql_data:
+  postgres_data:

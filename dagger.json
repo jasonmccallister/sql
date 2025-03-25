@@ -1,0 +1,7 @@
+{
+  "name": "sql",
+  "engineVersion": "v0.17.1",
+  "sdk": {
+    "source": "go"
+  }
+}
