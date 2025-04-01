@@ -50,7 +50,7 @@ func (m *Sql) connect() (*sql.DB, string, string, error) {
 			return nil, "", "", fmt.Errorf("error parsing connection string: %w", err)
 		}
 
-		strings.TrimPrefix(u.Path, "/")
+		database = strings.TrimPrefix(u.Path, "/")
 	case strings.HasPrefix(conn, "mysql://"), strings.Contains(conn, "@tcp("), strings.Contains(conn, "user:") && strings.Contains(conn, "@/"):
 		d, err := sql.Open("mysql", c)
 		if err != nil {
